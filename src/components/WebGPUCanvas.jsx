@@ -1,12 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { mat3, mat4, vec3, vec4 } from 'wgpu-matrix';
 import { createNoise3D } from 'simplex-noise'
+import { EdgeMasks, EdgeVertexIndices, TriangleTable } from './marchingCubesLookup';
+
 
 const WebGPUCanvas = () => {
     const canvasRef = useRef(null);
 
     //Grid dimenstions
-    const gridSize = 32;
+    const gridSize = 4;
     const threshold = 0.5;
 
     //functon to generate a 3D grid of random values
@@ -25,15 +27,47 @@ const WebGPUCanvas = () => {
         return grid;
     }
 
+    function flattenTriangles(triangles) {
+        const flattened = [];
+        for (const triangle of triangles) {
+            for (const vertex of triangle) {
+                if (vertex[0]) {
+                    flattened.push(vertex[0])
+                }
+                if (vertex[1]) {
+                    flattened.push(vertex[1])
+                }
+                if (vertex[2]) {
+                    flattened.push(vertex[2])
+                }
+            }
+        }
+        return new Float32Array(flattened);
+    }
+
+    // Fixed interpolation function
+    function interpolateVertex(v1, v2, val1, val2, threshold) {
+        if (Math.abs(threshold - val1) < 0.00001) return v1;
+        if (Math.abs(threshold - val2) < 0.00001) return v2;
+        if (Math.abs(val1 - val2) < 0.00001) return v1;
+        
+        const t = (threshold - val1) / (val2 - val1);
+        return [
+            v1[0] + t * (v2[0] - v1[0]),
+            v1[1] + t * (v2[1] - v1[1]),
+            v1[2] + t * (v2[2] - v1[2])
+        ];
+    }
+
     useEffect(() => {
         const grid = generateGrid3D(gridSize);
-
-        const vertices = [];
         const triangles = [];
 
+        // Main marching cubes loop
         for (let z = 0; z < gridSize - 1; z++) {
             for (let y = 0; y < gridSize - 1; y++) {
                 for (let x = 0; x < gridSize - 1; x++) {
+                    // Get the values at the cube's corners
                     const cube = [
                         grid[x + y * gridSize + z * gridSize * gridSize],
                         grid[(x + 1) + y * gridSize + z * gridSize * gridSize],
@@ -46,20 +80,68 @@ const WebGPUCanvas = () => {
                     ];
 
                     let cubeIndex = 0;
+                    for (let i = 0; i < 8; i++) {
+                        if (cube[i] < threshold) cubeIndex |= (1 << i);
+                    }
+                    
 
-                    if (cube[0] < threshold) cubeIndex |= 1;
-                    if (cube[1] < threshold) cubeIndex |= 2;
-                    if (cube[2] < threshold) cubeIndex |= 4;
-                    if (cube[3] < threshold) cubeIndex |= 8;
-                    if (cube[4] < threshold) cubeIndex |= 16;
-                    if (cube[5] < threshold) cubeIndex |= 32;
-                    if (cube[6] < threshold) cubeIndex |= 64;
-                    if (cube[7] < threshold) cubeIndex |= 128;
+                    const edgeMask = EdgeMasks[cubeIndex];
 
-                    const edgeMask = 
+                    if (edgeMask === 0) continue;
+
+                    const vertexList = [];
+                    for (let i = 0; i < 12; i++) {
+                        if (edgeMask & (1 << i)) {
+                            const edge = EdgeVertexIndices[i];
+                            const p1 = edge[0];
+                            const p2 = edge[1];
+                            
+                            // Create vertices as arrays instead of vec3
+                            const v1 = [
+                                x + (p1[0] === 1 ? 1 : 0),
+                                y + (p1[1] === 1 ? 1 : 0),
+                                z + (p1[2] === 1 ? 1 : 0)
+                            ];
+                            const v2 = [
+                                x + (p2[0] === 1 ? 1 : 0),
+                                y + (p2[1] === 1 ? 1 : 0),
+                                z + (p2[2] === 1 ? 1 : 0)
+                            ];
+                            
+                            // Get correct indices for cube values
+                            const val1 = cube[edge[0]]; // Use the first vertex index of the edge
+                            const val2 = cube[edge[1]]; // Use the second vertex index of the edge
+                            
+                            const vertex = interpolateVertex(v1, v2, val1, val2, threshold);
+                            vertexList.push(vertex);
+                        }
+                    }
+
+                    // Create triangles using the triangle table
+                    const triangleIndices = TriangleTable[cubeIndex];
+                    for (let i = 0; i < triangleIndices.length && triangleIndices[i] !== -1; i += 3) {
+                        triangles.push([
+                            vertexList[triangleIndices[i]],
+                            vertexList[triangleIndices[i + 1]],
+                            vertexList[triangleIndices[i + 2]]
+                        ]);
+                    }
                 }
             }
         }
+
+        if (triangles.length === 0) {
+            console.error('No triangles generated');
+            return;
+        }
+        else {
+            console.log('Generated', triangles, 'triangles');
+            const flattenedTriangles = flattenTriangles(triangles);
+            console.log('Flattened triangles:', flattenedTriangles);
+        }
+
+       
+
         const canvas = canvasRef.current;
 
         const camera = {
