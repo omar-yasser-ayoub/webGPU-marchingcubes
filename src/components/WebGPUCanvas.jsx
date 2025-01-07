@@ -9,7 +9,7 @@ const WebGPUCanvas = () => {
 
     //Grid dimenstions
     const gridSize = 16;
-    const threshold = 0.5;
+    const threshold = 0.2;
 
     //functon to generate a 3D grid of random values
     function generateGrid3D(gridSize) {
@@ -18,7 +18,7 @@ const WebGPUCanvas = () => {
         for (let z = 0; z < gridSize; z++) {
             for (let y = 0; y < gridSize; y++) {
                 for (let x = 0; x < gridSize; x++) {
-                    const value = noise(x * 0.1, y * 0.1, z * 0.1);
+                    const value = noise(x, y, z);
                     const index = x + y * gridSize + z * gridSize * gridSize;
                     grid[index] = value;
                 }
@@ -227,7 +227,7 @@ const WebGPUCanvas = () => {
             // ]);
 
             const flattened = flattenTriangles(allVertices);
-            const vertices = normalizeVertices(flattened);
+            const vertices = new Float32Array(normalizeVertices(flattened));
 
             const indices = new Uint32Array(allIndices);
         
