@@ -27,9 +27,41 @@ const WebGPUCanvas = () => {
 
     useEffect(() => {
         const grid = generateGrid3D(gridSize);
-        console.log(grid);
+
+        const vertices = [];
+        const triangles = [];
+
+        for (let z = 0; z < gridSize - 1; z++) {
+            for (let y = 0; y < gridSize - 1; y++) {
+                for (let x = 0; x < gridSize - 1; x++) {
+                    const cube = [
+                        grid[x + y * gridSize + z * gridSize * gridSize],
+                        grid[(x + 1) + y * gridSize + z * gridSize * gridSize],
+                        grid[(x + 1) + (y + 1) * gridSize + z * gridSize * gridSize],
+                        grid[x + (y + 1) * gridSize + z * gridSize * gridSize],
+                        grid[x + y * gridSize + (z + 1) * gridSize * gridSize],
+                        grid[(x + 1) + y * gridSize + (z + 1) * gridSize * gridSize],
+                        grid[(x + 1) + (y + 1) * gridSize + (z + 1) * gridSize * gridSize],
+                        grid[x + (y + 1) * gridSize + (z + 1) * gridSize * gridSize],
+                    ];
+
+                    let cubeIndex = 0;
+
+                    if (cube[0] < threshold) cubeIndex |= 1;
+                    if (cube[1] < threshold) cubeIndex |= 2;
+                    if (cube[2] < threshold) cubeIndex |= 4;
+                    if (cube[3] < threshold) cubeIndex |= 8;
+                    if (cube[4] < threshold) cubeIndex |= 16;
+                    if (cube[5] < threshold) cubeIndex |= 32;
+                    if (cube[6] < threshold) cubeIndex |= 64;
+                    if (cube[7] < threshold) cubeIndex |= 128;
+
+                    const edgeMask = 
+                }
+            }
+        }
         const canvas = canvasRef.current;
-        console.log("webgpu context created")
+
         const camera = {
             Eye: [1, 1, 1],
             Look: [0, 0, 0],
