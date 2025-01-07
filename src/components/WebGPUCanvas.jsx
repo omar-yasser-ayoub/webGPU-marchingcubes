@@ -1,13 +1,35 @@
 import React, { useEffect, useRef } from 'react';
 import { mat3, mat4, vec3, vec4 } from 'wgpu-matrix';
+import { createNoise3D } from 'simplex-noise'
 
 const WebGPUCanvas = () => {
     const canvasRef = useRef(null);
 
+    //Grid dimenstions
+    const gridSize = 32;
+    const threshold = 0.5;
+
+    //functon to generate a 3D grid of random values
+    function generateGrid3D(gridSize) {
+        const grid = new Float32Array(gridSize * gridSize * gridSize);
+        const noise = createNoise3D();
+        for (let z = 0; z < gridSize; z++) {
+            for (let y = 0; y < gridSize; y++) {
+                for (let x = 0; x < gridSize; x++) {
+                    const value = noise(x * 0.1, y * 0.1, z * 0.1);
+                    const index = x + y * gridSize + z * gridSize * gridSize;
+                    grid[index] = value;
+                }
+            }
+        }
+        return grid;
+    }
+
     useEffect(() => {
-
+        const grid = generateGrid3D(gridSize);
+        console.log(grid);
         const canvas = canvasRef.current;
-
+        console.log("webgpu context created")
         const camera = {
             Eye: [1, 1, 1],
             Look: [0, 0, 0],
