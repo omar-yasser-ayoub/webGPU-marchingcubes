@@ -8,7 +8,7 @@ const WebGPUCanvas = () => {
     const canvasRef = useRef(null);
 
     //Grid dimenstions
-    const gridSize = 4;
+    const gridSize = 16;
     const threshold = 0.5;
 
     //functon to generate a 3D grid of random values
@@ -30,18 +30,14 @@ const WebGPUCanvas = () => {
     function flattenTriangles(triangles) {
         const flattened = [];
         for (const triangle of triangles) {
-            for (const vertex of triangle) {
-                if (vertex[0]) {
-                    flattened.push(vertex[0])
-                }
-                if (vertex[1]) {
-                    flattened.push(vertex[1])
-                }
-                if (vertex[2]) {
-                    flattened.push(vertex[2])
-                }
+            if (triangle) {
+                flattened.push(triangle[0]);
+                flattened.push(triangle[1]);
+                flattened.push(triangle[2]);
             }
+            
         }
+        console.log(flattened);
         return new Float32Array(flattened);
     }
 
@@ -59,9 +55,55 @@ const WebGPUCanvas = () => {
         ];
     }
 
+    function normalizeVertices(vertices, targetMin = -0.5, targetMax = 0.5) {
+        // Find the min and max values of the vertex coordinates
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    
+        for (let i = 0; i < vertices.length; i += 3) {
+            const x = vertices[i];
+            const y = vertices[i + 1];
+            const z = vertices[i + 2];
+    
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            minZ = Math.min(minZ, z);
+    
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+            maxZ = Math.max(maxZ, z);
+        }
+    
+        // Calculate the range of the vertex coordinates
+        const rangeX = maxX - minX;
+        const rangeY = maxY - minY;
+        const rangeZ = maxZ - minZ;
+    
+        // Calculate the scale factor to fit within the target range
+        const scaleX = (targetMax - targetMin) / rangeX;
+        const scaleY = (targetMax - targetMin) / rangeY;
+        const scaleZ = (targetMax - targetMin) / rangeZ;
+    
+        // Normalize the vertices
+        const normalizedVertices = new Float32Array(vertices.length);
+        for (let i = 0; i < vertices.length; i += 3) {
+            const x = vertices[i];
+            const y = vertices[i + 1];
+            const z = vertices[i + 2];
+    
+            // Scale and translate to the target range
+            normalizedVertices[i] = (x - minX) * scaleX + targetMin;
+            normalizedVertices[i + 1] = (y - minY) * scaleY + targetMin;
+            normalizedVertices[i + 2] = (z - minZ) * scaleZ + targetMin;
+        }
+    
+        return normalizedVertices;
+    }
+
     useEffect(() => {
         const grid = generateGrid3D(gridSize);
-        const triangles = [];
+        const allVertices = []; // Global list of vertices
+        const allIndices = []; // Global list of indices
 
         // Main marching cubes loop
         for (let z = 0; z < gridSize - 1; z++) {
@@ -83,35 +125,33 @@ const WebGPUCanvas = () => {
                     for (let i = 0; i < 8; i++) {
                         if (cube[i] < threshold) cubeIndex |= (1 << i);
                     }
-                    
 
                     const edgeMask = EdgeMasks[cubeIndex];
-
                     if (edgeMask === 0) continue;
 
-                    const vertexList = [];
+                    const vertexList = []; // Local list of vertices for this cube
                     for (let i = 0; i < 12; i++) {
                         if (edgeMask & (1 << i)) {
                             const edge = EdgeVertexIndices[i];
                             const p1 = edge[0];
                             const p2 = edge[1];
-                            
+
                             // Create vertices as arrays instead of vec3
                             const v1 = [
                                 x + (p1[0] === 1 ? 1 : 0),
                                 y + (p1[1] === 1 ? 1 : 0),
-                                z + (p1[2] === 1 ? 1 : 0)
+                                z + (p1[2] === 1 ? 1 : 0),
                             ];
                             const v2 = [
                                 x + (p2[0] === 1 ? 1 : 0),
                                 y + (p2[1] === 1 ? 1 : 0),
-                                z + (p2[2] === 1 ? 1 : 0)
+                                z + (p2[2] === 1 ? 1 : 0),
                             ];
-                            
+
                             // Get correct indices for cube values
                             const val1 = cube[edge[0]]; // Use the first vertex index of the edge
                             const val2 = cube[edge[1]]; // Use the second vertex index of the edge
-                            
+
                             const vertex = interpolateVertex(v1, v2, val1, val2, threshold);
                             vertexList.push(vertex);
                         }
@@ -120,27 +160,18 @@ const WebGPUCanvas = () => {
                     // Create triangles using the triangle table
                     const triangleIndices = TriangleTable[cubeIndex];
                     for (let i = 0; i < triangleIndices.length && triangleIndices[i] !== -1; i += 3) {
-                        triangles.push([
-                            vertexList[triangleIndices[i]],
-                            vertexList[triangleIndices[i + 1]],
-                            vertexList[triangleIndices[i + 2]]
-                        ]);
+                        // Add vertices to the global list
+                        const index1 = allVertices.length;
+                        allVertices.push(vertexList[triangleIndices[i]]);
+                        allVertices.push(vertexList[triangleIndices[i + 1]]);
+                        allVertices.push(vertexList[triangleIndices[i + 2]]);
+
+                        // Add indices to the global list
+                        allIndices.push(index1, index1 + 1, index1 + 2);
                     }
                 }
             }
         }
-
-        if (triangles.length === 0) {
-            console.error('No triangles generated');
-            return;
-        }
-        else {
-            console.log('Generated', triangles, 'triangles');
-            const flattenedTriangles = flattenTriangles(triangles);
-            console.log('Flattened triangles:', flattenedTriangles);
-        }
-
-       
 
         const canvas = canvasRef.current;
 
@@ -182,36 +213,38 @@ const WebGPUCanvas = () => {
 
             // Configure the canvas context
             const format = navigator.gpu.getPreferredCanvasFormat();
-            
 
+            // const vertices = new Float32Array([
+            //     // X, Y, Z coordinates
+            //     -0.5, -0.5, -0.5,   // Vertex 0
+            //      0.5, -0.5, -0.5,   // Vertex 1
+            //      0.5,  0.5, -0.5,   // Vertex 2
+            //     -0.5,  0.5, -0.5,   // Vertex 3
+            //     -0.5, -0.5,  0.5,   // Vertex 4
+            //      0.5, -0.5,  0.5,   // Vertex 5
+            //      0.5,  0.5,  0.5,   // Vertex 6
+            //     -0.5,  0.5,  0.5    // Vertex 7
+            // ]);
 
-            const vertices = new Float32Array([
-                // X, Y, Z coordinates
-                -0.5, -0.5, -0.5,   // Vertex 0
-                 0.5, -0.5, -0.5,   // Vertex 1
-                 0.5,  0.5, -0.5,   // Vertex 2
-                -0.5,  0.5, -0.5,   // Vertex 3
-                -0.5, -0.5,  0.5,   // Vertex 4
-                 0.5, -0.5,  0.5,   // Vertex 5
-                 0.5,  0.5,  0.5,   // Vertex 6
-                -0.5,  0.5,  0.5    // Vertex 7
-            ]);
+            const flattened = flattenTriangles(allVertices);
+            const vertices = normalizeVertices(flattened);
+
+            const indices = new Uint32Array(allIndices);
         
-            const indices = new Uint32Array([
-                // Front face
-                0, 1, 2,  2, 3, 0,
-                // Back face
-                4, 5, 6,  6, 7, 4,
-                // Left face
-                0, 4, 7,  7, 3, 0,
-                // Right face
-                1, 5, 6,  6, 2, 1,
-                // Top face
-                3, 7, 6,  6, 2, 3,
-                // Bottom face
-                0, 1, 5,  5, 4, 0
-            ]);
-
+            // const indices = new Uint32Array([
+            //     // Front face
+            //     0, 1, 2,  2, 3, 0,
+            //     // Back face
+            //     4, 5, 6,  6, 7, 4,
+            //     // Left face
+            //     0, 4, 7,  7, 3, 0,
+            //     // Right face
+            //     1, 5, 6,  6, 2, 1,
+            //     // Top face
+            //     3, 7, 6,  6, 2, 3,
+            //     // Bottom face
+            //     0, 1, 5,  5, 4, 0
+            // ]);
 
             //create buffers for the vertices and indices and copy the data to the GPU
             const vertexBuffer = device.createBuffer({
@@ -364,7 +397,7 @@ const WebGPUCanvas = () => {
                 pass.setVertexBuffer(0, vertexBuffer);
                 pass.setPipeline(pipeline);
                 pass.setBindGroup(0, bindGroup);
-                pass.drawIndexed(36); // Draw a triangle
+                pass.drawIndexed(indices.length); // Draw a triangle
                 pass.end();
 
                 device.queue.submit([encoder.finish()]);
