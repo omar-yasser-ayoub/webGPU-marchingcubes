@@ -7,10 +7,13 @@ const WebGPUCanvas = () => {
     const canvasRef = useRef(null);
 
     const gridSize = 64;
-    const threshold = 128;
+    const threshold = 220;
+    let angle = 0;
+    const rotationSpeed = 0.02;
 
+    const noise = createNoise3D();
     function random(x,y,z) {
-        return x*x + y*y + z*z - 0.75*0.75;
+        return 512*Math.sin(x/10)*noise(x/10, y/10, z/10);
     }
     
     const voxel_grid = new Float32Array(gridSize * gridSize * gridSize);
@@ -292,6 +295,27 @@ const WebGPUCanvas = () => {
 
             // Render a frame
             function renderFrame() {
+                angle += rotationSpeed;
+
+                // Calculate the camera's position in a circular orbit
+                const radius = 2; // Distance from the center
+                const eyeX = radius * Math.cos(angle);
+                const eyeZ = radius * Math.sin(angle);
+                const camera = {
+                    Eye: [eyeX, 1, eyeZ], // Camera position
+                    Look: [0, 0, 0],      // Look at the center
+                    At: [0, 1, 0],        // Up direction
+                };
+
+                const viewMatrix = mat4.lookAt(camera.Eye, camera.Look, camera.At);
+
+                // Update the uniform buffer with the new view matrix
+                const matrixData = new Float32Array(32);
+                matrixData.set(projectionMatrix, 0);
+                matrixData.set(viewMatrix, 16);
+                device.queue.writeBuffer(uniformBuffer, 0, matrixData.buffer, matrixData.byteOffset, matrixData.byteLength);
+
+
                 context.configure({
                     device,
                     format,
